@@ -10,6 +10,8 @@ from PIL.ExifTags import TAGS
 import openpyxl
 from openpyxl import Workbook
 
+from water_meter_detector import detect_water_meter_type
+
 
 def get_image_datetime(image_path):
     """
@@ -50,8 +52,14 @@ def scan_images_to_excel():
     # Create results folder if it doesn't exist
     results_folder.mkdir(exist_ok=True)
     
-    # Get all JPG files from data folder
-    jpg_files = list(data_folder.glob('*.jpg')) + list(data_folder.glob('*.JPG'))
+    # Get all JPG files from data folder (case-insensitive)
+    jpg_files = []
+    seen_files = set()
+    for pattern in ['*.jpg', '*.JPG', '*.jpeg', '*.JPEG']:
+        for file_path in data_folder.glob(pattern):
+            if file_path.name.lower() not in seen_files:
+                jpg_files.append(file_path)
+                seen_files.add(file_path.name.lower())
     
     if not jpg_files:
         print("No JPG files found in data folder.")
@@ -68,26 +76,31 @@ def scan_images_to_excel():
     # Add headers
     ws['A1'] = 'File Name'
     ws['B1'] = 'Date and Time Taken'
+    ws['C1'] = 'Meter Type'
     
     # Make headers bold
     ws['A1'].font = openpyxl.styles.Font(bold=True)
     ws['B1'].font = openpyxl.styles.Font(bold=True)
+    ws['C1'].font = openpyxl.styles.Font(bold=True)
     
     # Process each image
     row = 2
     for image_path in jpg_files:
         filename = image_path.name
         datetime_taken = get_image_datetime(image_path)
+        meter_type = detect_water_meter_type(image_path)
         
         ws[f'A{row}'] = filename
         ws[f'B{row}'] = datetime_taken if datetime_taken else 'No EXIF data'
+        ws[f'C{row}'] = meter_type
         
-        print(f"Processed: {filename} - {datetime_taken}")
+        print(f"Processed: {filename} - {datetime_taken} - {meter_type}")
         row += 1
     
     # Auto-adjust column widths
     ws.column_dimensions['A'].width = 30
     ws.column_dimensions['B'].width = 25
+    ws.column_dimensions['C'].width = 15
     
     # Create output filename with current date
     current_date = datetime.now().strftime('%Y.%m.%dT%H.%M')

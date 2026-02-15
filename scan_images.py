@@ -10,7 +10,7 @@ from PIL.ExifTags import TAGS
 import openpyxl
 from openpyxl import Workbook
 
-from water_meter_detector import detect_water_meter_type
+from water_meter_detector import detect_water_meter_type, extract_meter_reading, extract_meter_display
 
 
 def get_image_datetime(image_path):
@@ -45,12 +45,21 @@ def scan_images_to_excel():
     """
     Scan JPG images from data folder and create Excel sheet with metadata.
     """
+    # Configuration
+    DEBUG_OUTPUT = True  # Set to True to see detailed debug information
+    SAVE_METER_DISPLAYS = True  # Save extracted meter display regions
+    
     # Define paths
     data_folder = Path('data')
     results_folder = Path('results')
+    displays_folder = Path('results/meter_displays')
     
     # Create results folder if it doesn't exist
     results_folder.mkdir(exist_ok=True)
+    
+    # Create meter displays folder if saving displays
+    if SAVE_METER_DISPLAYS:
+        displays_folder.mkdir(exist_ok=True)
     
     # Get all JPG files from data folder (case-insensitive)
     jpg_files = []
@@ -77,30 +86,40 @@ def scan_images_to_excel():
     ws['A1'] = 'File Name'
     ws['B1'] = 'Date and Time Taken'
     ws['C1'] = 'Meter Type'
+    ws['D1'] = 'Reading (m³)'
     
     # Make headers bold
     ws['A1'].font = openpyxl.styles.Font(bold=True)
     ws['B1'].font = openpyxl.styles.Font(bold=True)
     ws['C1'].font = openpyxl.styles.Font(bold=True)
+    ws['D1'].font = openpyxl.styles.Font(bold=True)
     
     # Process each image
     row = 2
     for image_path in jpg_files:
         filename = image_path.name
         datetime_taken = get_image_datetime(image_path)
-        meter_type = detect_water_meter_type(image_path)
+        meter_type = detect_water_meter_type(image_path, debug=DEBUG_OUTPUT)
+        meter_reading = extract_meter_reading(
+            image_path, 
+            debug=DEBUG_OUTPUT, 
+            save_display=SAVE_METER_DISPLAYS,
+            output_folder=displays_folder if SAVE_METER_DISPLAYS else None
+        )
         
         ws[f'A{row}'] = filename
         ws[f'B{row}'] = datetime_taken if datetime_taken else 'No EXIF data'
         ws[f'C{row}'] = meter_type
+        ws[f'D{row}'] = meter_reading if meter_reading else 'N/A'
         
-        print(f"Processed: {filename} - {datetime_taken} - {meter_type}")
+        print(f"Processed: {filename} - {meter_type} - Reading: {meter_reading if meter_reading else 'N/A'}")
         row += 1
     
     # Auto-adjust column widths
     ws.column_dimensions['A'].width = 30
     ws.column_dimensions['B'].width = 25
     ws.column_dimensions['C'].width = 15
+    ws.column_dimensions['D'].width = 15
     
     # Create output filename with current date
     current_date = datetime.now().strftime('%Y.%m.%dT%H.%M')
